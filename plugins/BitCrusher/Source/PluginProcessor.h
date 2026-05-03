@@ -35,6 +35,7 @@ public:
 private:
     juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     juce::SmoothedValue<float> smoothedCrush;
+    juce::SmoothedValue<float> smoothedMix;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(BitCrusherAudioProcessor)
 };

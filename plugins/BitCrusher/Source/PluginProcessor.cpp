@@ -18,6 +18,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout BitCrusherAudioProcessor::cr
         juce::NormalisableRange<float>(1.0f, 16.0f, 1.0f),
         16.0f,
         juce::AudioParameterFloatAttributes().withLabel("bits")));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID("mix", 1),
+        "Mix",
+        juce::NormalisableRange<float>(0.0f, 100.0f, 1.0f),
+        100.0f,
+        juce::AudioParameterFloatAttributes().withLabel("%")));
     return { params.begin(), params.end() };
 }
 
@@ -25,6 +31,8 @@ void BitCrusherAudioProcessor::prepareToPlay(double sampleRate, int /*samplesPer
 {
     smoothedCrush.reset(sampleRate, 0.02);
     smoothedCrush.setCurrentAndTargetValue(parameters.getRawParameterValue("crush")->load());
+    smoothedMix.reset(sampleRate, 0.02);
+    smoothedMix.setCurrentAndTargetValue(parameters.getRawParameterValue("mix")->load() * 0.01f);
 }
 
 bool BitCrusherAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
@@ -42,6 +50,7 @@ void BitCrusherAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
 
     const float crushBits = parameters.getRawParameterValue("crush")->load();
     smoothedCrush.setTargetValue(crushBits);
+    smoothedMix.setTargetValue(parameters.getRawParameterValue("mix")->load() * 0.01f);
 
     const int numChannels = buffer.getNumChannels();
     const int numSamples  = buffer.getNumSamples();
@@ -49,12 +58,14 @@ void BitCrusherAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
     for (int sample = 0; sample < numSamples; ++sample)
     {
         const float bits = smoothedCrush.getNextValue();
+        const float mix  = smoothedMix.getNextValue();
         const float levels = std::pow(2.0f, bits) - 1.0f;
 
         for (int ch = 0; ch < numChannels; ++ch)
         {
             float& s = buffer.getWritePointer(ch)[sample];
-            s = std::round(s * levels) / levels;
+            const float crushed = std::round(s * levels) / levels;
+            s = s + mix * (crushed - s);
         }
     }
 }

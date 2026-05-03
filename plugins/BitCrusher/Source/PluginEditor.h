@@ -18,5 +18,9 @@ private:
     juce::Label  crushLabel;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> crushAttachment;
 
+    juce::Slider mixSlider;
+    juce::Label  mixLabel;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> mixAttachment;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(BitCrusherAudioProcessorEditor)
 };
