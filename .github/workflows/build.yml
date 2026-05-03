@@ -42,7 +42,7 @@ jobs:
             exit 1
           }
           foreach ($p in $vsts) {
-            $zipName = "$($p.BaseName).vst3.zip"
+            $zipName = "$($p.Name).zip"
             Compress-Archive -Path $p.FullName -DestinationPath "artifacts/$zipName" -Force
             Write-Host "Packaged: $zipName"
           }
