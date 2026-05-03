@@ -71,6 +71,13 @@ bool SmartUnmaskerAudioProcessor::isBusesLayoutSupported(const BusesLayout& layo
     if (mainOutput != juce::AudioChannelSet::stereo() && mainOutput != juce::AudioChannelSet::mono())
         return false;
 
+    // Sidechain must be stereo, mono, or disabled
+    const auto& sidechain = layouts.getChannelSet(true, 1);
+    if (!sidechain.isDisabled()
+        && sidechain != juce::AudioChannelSet::stereo()
+        && sidechain != juce::AudioChannelSet::mono())
+        return false;
+
     return true;
 }
 
@@ -90,6 +97,17 @@ void SmartUnmaskerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 {
     juce::ScopedNoDenormals noDenormals;
 
+    const int numSamples = buffer.getNumSamples();
+    const int numOutputChannels = juce::jmin(buffer.getNumChannels(), 2);
+
+    auto* sideInputBus = getBus(true, 1);
+    const bool hasSidechain = sideInputBus != nullptr && sideInputBus->isEnabled()
+                              && getBusBuffer(buffer, true, 1).getNumChannels() > 0;
+
+    // If no sidechain connected or not yet prepared, pass audio through unchanged
+    if (!hasSidechain || channelState[0].inputFifo.empty())
+        return;
+
     const float clarity = parameters.getRawParameterValue("clarity")->load();
     const float attackMs = parameters.getRawParameterValue("attack")->load();
     const float releaseMs = parameters.getRawParameterValue("release")->load();
@@ -98,25 +116,15 @@ void SmartUnmaskerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     const float attackCoeff = 1.0f - std::exp(-1.0f / (float(currentSampleRate) * attackMs * 0.001f));
     const float releaseCoeff = 1.0f - std::exp(-1.0f / (float(currentSampleRate) * releaseMs * 0.001f));
 
-    const int numOutputChannels = buffer.getNumChannels();
-    const int numSamples = buffer.getNumSamples();
-
-    auto totalInputBus = getBus(true, 0);
-    auto sideInputBus = getBus(true, 1);
-
-    const bool hasSidechain = sideInputBus != nullptr && sideInputBus->isEnabled();
-    const int sidechainChannels = hasSidechain ? getBusBuffer(buffer, true, 1).getNumChannels() : 0;
-
-    auto mainBuffer = getBusBuffer(buffer, true, 0);
-    auto sideBuffer = hasSidechain ? getBusBuffer(buffer, true, 1) : juce::AudioBuffer<float>();
+    auto sideBuffer = getBusBuffer(buffer, true, 1);
+    const int sidechainChannels = sideBuffer.getNumChannels();
 
     for (int ch = 0; ch < numOutputChannels; ++ch)
     {
         auto& state = channelState[ch];
         auto* mainData = buffer.getWritePointer(ch);
-        const float* sideData = (hasSidechain && ch < sidechainChannels)
-            ? sideBuffer.getReadPointer(ch)
-            : mainData;
+        const int sideCh = juce::jmin(ch, sidechainChannels - 1);
+        const float* sideData = sideBuffer.getReadPointer(sideCh);
 
         for (int i = 0; i < numSamples; ++i)
         {
