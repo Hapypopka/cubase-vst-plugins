@@ -42,9 +42,20 @@ jobs:
             exit 1
           }
           foreach ($p in $vsts) {
-            $zipName = "$($p.Name).zip"
-            Compress-Archive -Path $p.FullName -DestinationPath "artifacts/$zipName" -Force
-            Write-Host "Packaged: $zipName"
+            # Имя плагина берём из _artefacts папки (target name = чистый ASCII)
+            $artefactsDir = $p.Parent.Parent.Parent
+            $targetName = $artefactsDir.Name -replace '_artefacts$', ''
+
+            # Копируем .vst3 в staging с чистым ASCII именем
+            $staging = Join-Path $env:RUNNER_TEMP "stage_$targetName"
+            if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }
+            New-Item -ItemType Directory -Path $staging | Out-Null
+            $cleanVst = Join-Path $staging "$targetName.vst3"
+            Copy-Item -Path $p.FullName -Destination $cleanVst -Recurse
+
+            $zipName = "$targetName.vst3.zip"
+            Compress-Archive -Path $cleanVst -DestinationPath "artifacts/$zipName" -Force
+            Write-Host "Packaged: $zipName  (target=$targetName, original=$($p.Name))"
           }
 
       - name: Build release notes
