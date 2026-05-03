@@ -1,0 +1,7 @@
+build/
+JUCE/
+.vs/
+.vscode/
+*.user
+out/
+cmake-build-*/

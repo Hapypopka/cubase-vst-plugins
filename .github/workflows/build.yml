@@ -1,0 +1,71 @@
+name: Build VST3 plugins
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache JUCE
+        id: cache-juce
+        uses: actions/cache@v4
+        with:
+          path: JUCE
+          key: juce-7.0.12-${{ runner.os }}
+
+      - name: Clone JUCE
+        if: steps.cache-juce.outputs.cache-hit != 'true'
+        run: git clone --depth 1 --branch 7.0.12 https://github.com/juce-framework/JUCE.git
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Collect .vst3 bundles
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          $vsts = Get-ChildItem -Path build -Recurse -Filter "*.vst3" -Directory
+          if ($vsts.Count -eq 0) {
+            Write-Error "No .vst3 bundles found in build/"
+            exit 1
+          }
+          foreach ($p in $vsts) {
+            $zipName = "$($p.BaseName).vst3.zip"
+            Compress-Archive -Path $p.FullName -DestinationPath "artifacts/$zipName" -Force
+            Write-Host "Packaged: $zipName"
+          }
+
+      - name: Compute version tag
+        id: ver
+        shell: pwsh
+        run: |
+          $tag = "build-$(Get-Date -Format yyyyMMdd-HHmmss)-${{ github.run_number }}"
+          echo "tag=$tag" >> $env:GITHUB_OUTPUT
+          echo "Tag: $tag"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: VST3 build ${{ steps.ver.outputs.tag }}
+          files: artifacts/*.zip
+          generate_release_notes: false
+          body: |
+            Автоматическая сборка VST3 плагинов.
+
+            Распакуй .zip файл и положи .vst3 папку в:
+            `C:\Program Files\Common Files\VST3\`
+
+            Перезапусти Cubase — плагин появится в списке.
