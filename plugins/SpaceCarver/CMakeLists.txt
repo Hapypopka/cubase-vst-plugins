@@ -1,26 +1,26 @@
-juce_add_plugin(SmartUnmasker
+juce_add_plugin(SpaceCarver
     COMPANY_NAME "IlmirVST"
     PLUGIN_MANUFACTURER_CODE Ilmr
-    PLUGIN_CODE SmUn
+    PLUGIN_CODE SpCv
     FORMATS VST3
-    PRODUCT_NAME "Умный анмаскер (Smart Unmasker)"
+    PRODUCT_NAME "SpaceCarver"
     VST3_CATEGORIES "Fx Dynamics"
-    BUNDLE_ID "com.ilmirvst.smartunmasker")
+    BUNDLE_ID "com.ilmirvst.spacecarver")
 
-juce_generate_juce_header(SmartUnmasker)
+juce_generate_juce_header(SpaceCarver)
 
-target_sources(SmartUnmasker
+target_sources(SpaceCarver
     PRIVATE
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp)
 
-target_compile_definitions(SmartUnmasker
+target_compile_definitions(SpaceCarver
     PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0)
 
-target_link_libraries(SmartUnmasker
+target_link_libraries(SpaceCarver
     PRIVATE
         juce::juce_audio_utils
         juce::juce_dsp

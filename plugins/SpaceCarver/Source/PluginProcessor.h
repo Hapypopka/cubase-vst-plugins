@@ -4,11 +4,11 @@
 #include "SpectralMask.h"
 #include "OverlapAdd.h"
 
-class SmartUnmaskerAudioProcessor : public juce::AudioProcessor
+class SpaceCarverAudioProcessor : public juce::AudioProcessor
 {
 public:
-    SmartUnmaskerAudioProcessor();
-    ~SmartUnmaskerAudioProcessor() override = default;
+    SpaceCarverAudioProcessor();
+    ~SpaceCarverAudioProcessor() override = default;
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
@@ -18,7 +18,7 @@ public:
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
-    const juce::String getName() const override { return "Smart Unmasker"; }
+    const juce::String getName() const override { return "SpaceCarver"; }
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
@@ -35,7 +35,6 @@ public:
 
     juce::AudioProcessorValueTreeState parameters;
 
-    // Mode constants
     enum Mode { VocalClean = 0, MixGlue = 1, Punch = 2 };
 
 private:
@@ -64,5 +63,5 @@ private:
 
     void processFFTBlock(ChannelFFTState& state, const SpectralMaskParams& params);
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SmartUnmaskerAudioProcessor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SpaceCarverAudioProcessor)
 };

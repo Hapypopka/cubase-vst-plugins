@@ -8,7 +8,7 @@ static const juce::Colour dimTextColour(0xff888899);
 static const juce::Colour activeButtonColour(0xff4a6cf7);
 static const juce::Colour inactiveButtonColour(0xff333350);
 
-SmartUnmaskerAudioProcessorEditor::SmartUnmaskerAudioProcessorEditor(SmartUnmaskerAudioProcessor& p)
+SpaceCarverAudioProcessorEditor::SpaceCarverAudioProcessorEditor(SpaceCarverAudioProcessor& p)
     : juce::AudioProcessorEditor(&p), processorRef(p)
 {
     auto setupKnob = [this](juce::Slider& slider, juce::Label& label, const juce::String& text,
@@ -31,7 +31,6 @@ SmartUnmaskerAudioProcessorEditor::SmartUnmaskerAudioProcessorEditor(SmartUnmask
             processorRef.parameters, paramId, slider);
     };
 
-    // Processing knobs
     setupKnob(claritySlider, clarityLabel, "CLARITY", "clarity", clarityAtt);
     setupKnob(focusSlider, focusLabel, "FOCUS", "focus", focusAtt);
     setupKnob(attackSlider, attackLabel, "ATTACK", "attack", attackAtt);
@@ -39,7 +38,6 @@ SmartUnmaskerAudioProcessorEditor::SmartUnmaskerAudioProcessorEditor(SmartUnmask
     setupKnob(protectBodySlider, protectBodyLabel, "PROTECT BODY", "protectbody", protectBodyAtt);
     setupKnob(transientsSlider, transientsLabel, "TRANSIENTS", "transients", transientsAtt);
 
-    // Mode buttons
     auto setupModeBtn = [this](juce::TextButton& btn, int modeIdx)
     {
         btn.setClickingTogglesState(false);
@@ -57,7 +55,6 @@ SmartUnmaskerAudioProcessorEditor::SmartUnmaskerAudioProcessorEditor(SmartUnmask
     int currentMode = (int)processorRef.parameters.getRawParameterValue("mode")->load();
     updateModeButtons(currentMode);
 
-    // Bottom section
     setupKnob(mixSlider, mixLabel, "MIX", "mix", mixAtt);
     setupKnob(outputSlider, outputLabel, "OUTPUT", "output", outputAtt);
 
@@ -70,14 +67,14 @@ SmartUnmaskerAudioProcessorEditor::SmartUnmaskerAudioProcessorEditor(SmartUnmask
     setSize(680, 400);
 }
 
-void SmartUnmaskerAudioProcessorEditor::setMode(int mode)
+void SpaceCarverAudioProcessorEditor::setMode(int mode)
 {
     processorRef.parameters.getParameter("mode")->setValueNotifyingHost(
         processorRef.parameters.getParameter("mode")->convertTo0to1(float(mode)));
     updateModeButtons(mode);
 }
 
-void SmartUnmaskerAudioProcessorEditor::updateModeButtons(int mode)
+void SpaceCarverAudioProcessorEditor::updateModeButtons(int mode)
 {
     vocalCleanBtn.setColour(juce::TextButton::buttonColourId, mode == 0 ? activeButtonColour : inactiveButtonColour);
     mixGlueBtn.setColour(juce::TextButton::buttonColourId, mode == 1 ? activeButtonColour : inactiveButtonColour);
@@ -85,7 +82,7 @@ void SmartUnmaskerAudioProcessorEditor::updateModeButtons(int mode)
     repaint();
 }
 
-void SmartUnmaskerAudioProcessorEditor::paint(juce::Graphics& g)
+void SpaceCarverAudioProcessorEditor::paint(juce::Graphics& g)
 {
     g.fillAll(bgColour);
 
@@ -95,24 +92,23 @@ void SmartUnmaskerAudioProcessorEditor::paint(juce::Graphics& g)
     g.fillRect(titleArea);
     g.setColour(juce::Colours::white);
     g.setFont(juce::Font(20.0f, juce::Font::bold));
-    g.drawFittedText("SMART UNMASKER", titleArea.reduced(16, 0), juce::Justification::centredLeft, 1);
+    g.drawFittedText("SPACECARVER", titleArea.reduced(16, 0), juce::Justification::centredLeft, 1);
     g.setFont(juce::Font(11.0f));
     g.setColour(dimTextColour);
     g.drawFittedText("Intelligent Spectral Unmasking", titleArea.reduced(16, 0), juce::Justification::centredRight, 1);
 
-    // Processing panel background
+    // Processing panel
     auto bounds = getLocalBounds();
     bounds.removeFromTop(44);
     auto processingArea = bounds.removeFromTop(220).reduced(12, 8);
     g.setColour(panelColour);
     g.fillRoundedRectangle(processingArea.toFloat(), 6.0f);
 
-    // Processing label
     g.setColour(accentColour);
     g.setFont(juce::Font(11.0f, juce::Font::bold));
     g.drawText("PROCESSING", processingArea.getX() + 12, processingArea.getY() + 6, 120, 16, juce::Justification::centredLeft);
 
-    // Mode label
+    // Mode panel
     auto modePanelArea = processingArea.removeFromRight(130);
     g.setColour(panelColour.brighter(0.1f));
     g.fillRoundedRectangle(modePanelArea.toFloat(), 6.0f);
@@ -124,23 +120,20 @@ void SmartUnmaskerAudioProcessorEditor::paint(juce::Graphics& g)
     g.setColour(panelColour);
     g.fillRoundedRectangle(bottomArea.toFloat(), 6.0f);
 
-    // Sidechain hint
     g.setColour(dimTextColour);
     g.setFont(juce::Font(11.0f));
     g.drawFittedText("Route sidechain input in DAW", bottomArea.removeFromRight(200).reduced(8),
                      juce::Justification::centredRight, 1);
 }
 
-void SmartUnmaskerAudioProcessorEditor::resized()
+void SpaceCarverAudioProcessorEditor::resized()
 {
     auto bounds = getLocalBounds();
     bounds.removeFromTop(44);
 
-    // Processing section
     auto processingArea = bounds.removeFromTop(220).reduced(12, 8);
     auto modeArea = processingArea.removeFromRight(130).reduced(8, 28);
 
-    // Knobs area
     auto knobArea = processingArea.reduced(8, 28);
     const int knobWidth = knobArea.getWidth() / 6;
 
@@ -158,7 +151,6 @@ void SmartUnmaskerAudioProcessorEditor::resized()
     placeKnob(protectBodySlider, protectBodyLabel);
     placeKnob(transientsSlider, transientsLabel);
 
-    // Mode buttons
     const int btnHeight = 36;
     const int btnGap = 6;
     vocalCleanBtn.setBounds(modeArea.removeFromTop(btnHeight));
@@ -167,7 +159,6 @@ void SmartUnmaskerAudioProcessorEditor::resized()
     modeArea.removeFromTop(btnGap);
     punchBtn.setBounds(modeArea.removeFromTop(btnHeight));
 
-    // Bottom section
     auto bottomArea = bounds.reduced(12, 4).reduced(8, 8);
 
     auto mixArea = bottomArea.removeFromLeft(90);

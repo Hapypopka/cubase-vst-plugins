@@ -33,14 +33,12 @@ public:
         std::fill(prevMainMag.begin(), prevMainMag.end(), 0.0f);
     }
 
-    // Process and store gain reduction separately so we can compute delta
     void process(float* mainFFT, int size, const float* sideFFT, const SpectralMaskParams& p)
     {
         const int numBins = size / 2;
         const float bodyFreqLimit = 300.0f;
         const float bodyBinLimit = bodyFreqLimit * float(fftSize) / float(sr);
 
-        // Detect transients: compare current energy to previous
         float currentEnergy = 0.0f;
         float prevEnergy = 0.0f;
         for (int bin = 0; bin < numBins; ++bin)
@@ -59,7 +57,6 @@ public:
                 transientFactor = 1.0f - p.transients * juce::jlimit(0.0f, 1.0f, (ratio - 1.5f) / 2.0f);
         }
 
-        // Spectral blur width based on focus (low focus = more blur = broader)
         const int blurWidth = juce::jmax(0, (int)((1.0f - p.focus) * 10.0f));
 
         for (int bin = 0; bin < numBins; ++bin)
@@ -67,7 +64,6 @@ public:
             int i = bin * 2;
             float magM = std::sqrt(mainFFT[i] * mainFFT[i] + mainFFT[i + 1] * mainFFT[i + 1]);
 
-            // Average sidechain magnitude over blur range for broader detection
             float magS = 0.0f;
             int count = 0;
             for (int b = juce::jmax(0, bin - blurWidth); b <= juce::jmin(numBins - 1, bin + blurWidth); ++b)
@@ -81,17 +77,14 @@ public:
             float target = magS / (magM + 1e-6f);
             target = juce::jlimit(0.0f, 1.0f, target * p.amount);
 
-            // Protect body: reduce processing below bodyFreqLimit
             if (p.protectBody > 0.0f && float(bin) < bodyBinLimit)
             {
                 float bodyScale = 1.0f - p.protectBody * (1.0f - float(bin) / bodyBinLimit);
                 target *= bodyScale;
             }
 
-            // Apply transient protection
             target *= transientFactor;
 
-            // Envelope follower
             if (target > envelope[i])
                 envelope[i] += p.attackCoeff * (target - envelope[i]);
             else

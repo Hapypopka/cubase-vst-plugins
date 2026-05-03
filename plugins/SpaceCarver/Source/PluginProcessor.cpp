@@ -1,7 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-SmartUnmaskerAudioProcessor::SmartUnmaskerAudioProcessor()
+SpaceCarverAudioProcessor::SpaceCarverAudioProcessor()
     : AudioProcessor(BusesProperties()
         .withInput("Input", juce::AudioChannelSet::stereo(), true)
         .withInput("Sidechain", juce::AudioChannelSet::stereo(), false)
@@ -10,7 +10,7 @@ SmartUnmaskerAudioProcessor::SmartUnmaskerAudioProcessor()
 {
 }
 
-juce::AudioProcessorValueTreeState::ParameterLayout SmartUnmaskerAudioProcessor::createLayout()
+juce::AudioProcessorValueTreeState::ParameterLayout SpaceCarverAudioProcessor::createLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
@@ -64,7 +64,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout SmartUnmaskerAudioProcessor:
     return { params.begin(), params.end() };
 }
 
-void SmartUnmaskerAudioProcessor::prepareToPlay(double sampleRate, int /*samplesPerBlock*/)
+void SpaceCarverAudioProcessor::prepareToPlay(double sampleRate, int /*samplesPerBlock*/)
 {
     currentSampleRate = sampleRate;
 
@@ -84,7 +84,7 @@ void SmartUnmaskerAudioProcessor::prepareToPlay(double sampleRate, int /*samples
     }
 }
 
-bool SmartUnmaskerAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
+bool SpaceCarverAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
     const auto& mainInput = layouts.getMainInputChannelSet();
     const auto& mainOutput = layouts.getMainOutputChannelSet();
@@ -104,12 +104,12 @@ bool SmartUnmaskerAudioProcessor::isBusesLayoutSupported(const BusesLayout& layo
     return true;
 }
 
-void SmartUnmaskerAudioProcessor::processFFTBlock(ChannelFFTState& state, const SpectralMaskParams& params)
+void SpaceCarverAudioProcessor::processFFTBlock(ChannelFFTState& state, const SpectralMaskParams& params)
 {
     state.mainFFT.forward(state.inputFifo.data());
     state.sideFFT.forward(state.sideFifo.data());
 
-    // Save dry FFT for delta calculation
+    // Save dry FFT for delta
     std::vector<float> dryFFT(fftSize * 2);
     std::memcpy(dryFFT.data(), state.mainFFT.getData(), sizeof(float) * fftSize * 2);
 
@@ -120,18 +120,7 @@ void SmartUnmaskerAudioProcessor::processFFTBlock(ChannelFFTState& state, const 
     state.ola.applyWindow(state.outputBlock.data());
     state.ola.addToOutput(state.outputBlock.data());
 
-    // Delta = dry - wet (what was removed)
-    float* wetFFT = state.mainFFT.getData();
-    // We need to re-do inverse on dryFFT - wetFFT, but mainFFT was already modified
-    // So compute delta in time domain after inverse
-    // Actually recompute: delta = inputFifo (windowed) - outputBlock
-    // Simpler: delta FFT = dryFFT - processedFFT
-    // But mainFFT was already inversed. Let's use dryFFT directly.
-    // Re-forward the processed to get delta? No, let's just compute delta in time domain.
-
-    // Compute delta block: original windowed input minus processed output
-    // The outputBlock already has the processed (post-inverse, pre-window) signal
-    // We need original windowed signal for comparison
+    // Delta: original windowed - processed
     FFTProcessor tempFFT(fftOrder);
     tempFFT.forward(state.inputFifo.data());
     tempFFT.inverse(state.deltaBlock.data());
@@ -143,7 +132,7 @@ void SmartUnmaskerAudioProcessor::processFFTBlock(ChannelFFTState& state, const 
     state.deltaOla.addToOutput(state.deltaBlock.data());
 }
 
-void SmartUnmaskerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void SpaceCarverAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
 
@@ -170,7 +159,6 @@ void SmartUnmaskerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     if (sidechainChannels <= 0)
         return;
 
-    // Read parameters
     const float clarity = parameters.getRawParameterValue("clarity")->load() / 100.0f;
     const float focus = parameters.getRawParameterValue("focus")->load() / 100.0f;
     const float attackMs = parameters.getRawParameterValue("attack")->load();
@@ -184,7 +172,6 @@ void SmartUnmaskerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     const float outputGain = juce::Decibels::decibelsToGain(outputDb);
 
-    // Mode modifiers
     float modeAmountMult = 1.0f;
     float modeFocusBias = 0.0f;
     float modeBodyBias = 0.0f;
@@ -255,18 +242,18 @@ void SmartUnmaskerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     }
 }
 
-juce::AudioProcessorEditor* SmartUnmaskerAudioProcessor::createEditor()
+juce::AudioProcessorEditor* SpaceCarverAudioProcessor::createEditor()
 {
-    return new SmartUnmaskerAudioProcessorEditor(*this);
+    return new SpaceCarverAudioProcessorEditor(*this);
 }
 
-void SmartUnmaskerAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
+void SpaceCarverAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
     if (auto state = parameters.copyState(); auto xml = state.createXml())
         copyXmlToBinary(*xml, destData);
 }
 
-void SmartUnmaskerAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
+void SpaceCarverAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
     if (auto xml = getXmlFromBinary(data, sizeInBytes))
         if (xml->hasTagName(parameters.state.getType()))
@@ -275,5 +262,5 @@ void SmartUnmaskerAudioProcessor::setStateInformation(const void* data, int size
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new SmartUnmaskerAudioProcessor();
+    return new SpaceCarverAudioProcessor();
 }
