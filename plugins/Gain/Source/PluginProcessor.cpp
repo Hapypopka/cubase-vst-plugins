@@ -24,7 +24,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout GainAudioProcessor::createLa
 void GainAudioProcessor::prepareToPlay(double sampleRate, int /*samplesPerBlock*/)
 {
     smoothedGain.reset(sampleRate, 0.05);
-    smoothedGain.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(*parameters.getRawParameterValue("gain")));
+    const float initialDb = parameters.getRawParameterValue("gain")->load();
+    smoothedGain.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(initialDb));
 }
 
 bool GainAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
@@ -40,7 +41,7 @@ void GainAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mi
 {
     juce::ScopedNoDenormals noDenormals;
 
-    const float gainDb = *parameters.getRawParameterValue("gain");
+    const float gainDb = parameters.getRawParameterValue("gain")->load();
     smoothedGain.setTargetValue(juce::Decibels::decibelsToGain(gainDb));
 
     const int numChannels = buffer.getNumChannels();
