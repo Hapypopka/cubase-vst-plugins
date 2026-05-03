@@ -47,25 +47,64 @@ jobs:
             Write-Host "Packaged: $zipName"
           }
 
+      - name: Build release notes
+        id: notes
+        shell: pwsh
+        run: |
+          # Имя релиза = первая строка последнего commit message
+          $commitMsg = git log -1 --pretty=%s
+          if ([string]::IsNullOrWhiteSpace($commitMsg)) { $commitMsg = "Обновление плагинов" }
+          # Очистим от служебных префиксов типа "fix:", "feat:" и тд
+          $commitMsg = $commitMsg -replace '^(fix|feat|chore|docs|refactor|test|update|build):\s*', ''
+          # Capitalize first letter
+          if ($commitMsg.Length -gt 0) { $commitMsg = $commitMsg.Substring(0,1).ToUpper() + $commitMsg.Substring(1) }
+          echo "release_name=$commitMsg" >> $env:GITHUB_OUTPUT
+          Write-Host "Release name: $commitMsg"
+
+          # Тело релиза — список всех плагинов с описаниями из INFO.md
+          $body = @()
+          $body += "## Плагины в этом релизе"
+          $body += ""
+
+          $pluginDirs = Get-ChildItem -Path plugins -Directory -ErrorAction SilentlyContinue
+          foreach ($dir in $pluginDirs) {
+            $infoFile = Join-Path $dir.FullName "INFO.md"
+            $name_ru = $dir.Name
+            $emoji = "🎛️"
+            $desc = ""
+
+            if (Test-Path $infoFile) {
+              $content = Get-Content $infoFile -Raw
+              if ($content -match '(?m)^name_ru:\s*(.+)$')  { $name_ru = $matches[1].Trim() }
+              if ($content -match '(?m)^emoji:\s*(.+)$')    { $emoji = $matches[1].Trim() }
+              if ($content -match '(?m)^description:\s*(.+)$') { $desc = $matches[1].Trim() }
+            }
+            $line = "$emoji **$name_ru** (`$($dir.Name).vst3.zip`)"
+            if ($desc) { $line += " — $desc" }
+            $body += $line
+          }
+
+          $body += ""
+          $body += "---"
+          $body += ""
+          $body += "**Установка**: распакуй `.zip` файл, положи папку `.vst3` в `C:\Program Files\Common Files\VST3\` и перезапусти Cubase."
+
+          $bodyText = $body -join "`n"
+          $bodyText | Out-File -FilePath release_body.md -Encoding utf8
+          Write-Host "Body:"
+          Write-Host $bodyText
+
       - name: Compute version tag
         id: ver
         shell: pwsh
         run: |
           $tag = "build-$(Get-Date -Format yyyyMMdd-HHmmss)-${{ github.run_number }}"
           echo "tag=$tag" >> $env:GITHUB_OUTPUT
-          echo "Tag: $tag"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
-          name: VST3 build ${{ steps.ver.outputs.tag }}
+          name: ${{ steps.notes.outputs.release_name }}
+          body_path: release_body.md
           files: artifacts/*.zip
-          generate_release_notes: false
-          body: |
-            Автоматическая сборка VST3 плагинов.
-
-            Распакуй .zip файл и положи .vst3 папку в:
-            `C:\Program Files\Common Files\VST3\`
-
-            Перезапусти Cubase — плагин появится в списке.

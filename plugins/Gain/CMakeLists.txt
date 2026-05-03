@@ -3,7 +3,7 @@ juce_add_plugin(Gain
     PLUGIN_MANUFACTURER_CODE Ilmr
     PLUGIN_CODE Gain
     FORMATS VST3
-    PRODUCT_NAME "Gain"
+    PRODUCT_NAME "Громкость (Gain)"
     VST3_CATEGORIES "Fx Tools"
     BUNDLE_ID "com.ilmirvst.gain")
 
