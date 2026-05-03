@@ -35,8 +35,11 @@ public:
 
     juce::AudioProcessorValueTreeState parameters;
 
+    // Mode constants
+    enum Mode { VocalClean = 0, MixGlue = 1, Punch = 2 };
+
 private:
-    static constexpr int fftOrder = 10;
+    static constexpr int fftOrder = 11;
     static constexpr int fftSize = 1 << fftOrder;
     static constexpr int hopSize = fftSize / 4;
 
@@ -48,16 +51,18 @@ private:
         FFTProcessor sideFFT{fftOrder};
         SpectralMask mask;
         OverlapAdd ola;
+        OverlapAdd deltaOla;
         std::vector<float> inputFifo;
         std::vector<float> sideFifo;
         std::vector<float> outputBlock;
+        std::vector<float> deltaBlock;
         int fifoIndex = 0;
     };
 
     std::array<ChannelFFTState, 2> channelState;
     double currentSampleRate = 44100.0;
 
-    void processFFTBlock(ChannelFFTState& state, float amount, float attackCoeff, float releaseCoeff);
+    void processFFTBlock(ChannelFFTState& state, const SpectralMaskParams& params);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SmartUnmaskerAudioProcessor)
 };
