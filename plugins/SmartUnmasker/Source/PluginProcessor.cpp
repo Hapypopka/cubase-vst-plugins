@@ -4,7 +4,7 @@
 SmartUnmaskerAudioProcessor::SmartUnmaskerAudioProcessor()
     : AudioProcessor(BusesProperties()
         .withInput("Input", juce::AudioChannelSet::stereo(), true)
-        .withInput("Sidechain", juce::AudioChannelSet::stereo(), true)
+        .withInput("Sidechain", juce::AudioChannelSet::stereo(), false)
         .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       parameters(*this, nullptr, "PARAMS", createLayout())
 {
@@ -98,14 +98,29 @@ void SmartUnmaskerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     juce::ScopedNoDenormals noDenormals;
 
     const int numSamples = buffer.getNumSamples();
+    if (numSamples == 0)
+        return;
+
     const int numOutputChannels = juce::jmin(buffer.getNumChannels(), 2);
 
+    // Safely check if sidechain is available
     auto* sideInputBus = getBus(true, 1);
-    const bool hasSidechain = sideInputBus != nullptr && sideInputBus->isEnabled()
-                              && getBusBuffer(buffer, true, 1).getNumChannels() > 0;
+    if (sideInputBus == nullptr || !sideInputBus->isEnabled())
+        return;
 
-    // If no sidechain connected or not yet prepared, pass audio through unchanged
-    if (!hasSidechain || channelState[0].inputFifo.empty())
+    // Verify buffer actually has enough channels for sidechain
+    const int mainBusCh = getMainBusNumInputChannels();
+    const int expectedTotalCh = mainBusCh + sideInputBus->getNumberOfChannels();
+    if (buffer.getNumChannels() < expectedTotalCh)
+        return;
+
+    // Not yet prepared
+    if (channelState[0].inputFifo.empty())
+        return;
+
+    auto sideBuffer = getBusBuffer(buffer, true, 1);
+    const int sidechainChannels = sideBuffer.getNumChannels();
+    if (sidechainChannels <= 0)
         return;
 
     const float clarity = parameters.getRawParameterValue("clarity")->load();
@@ -115,9 +130,6 @@ void SmartUnmaskerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     const float attackCoeff = 1.0f - std::exp(-1.0f / (float(currentSampleRate) * attackMs * 0.001f));
     const float releaseCoeff = 1.0f - std::exp(-1.0f / (float(currentSampleRate) * releaseMs * 0.001f));
-
-    auto sideBuffer = getBusBuffer(buffer, true, 1);
-    const int sidechainChannels = sideBuffer.getNumChannels();
 
     for (int ch = 0; ch < numOutputChannels; ++ch)
     {
