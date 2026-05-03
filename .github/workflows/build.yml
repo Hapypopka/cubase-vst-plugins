@@ -68,18 +68,19 @@ jobs:
 
           $pluginDirs = Get-ChildItem -Path plugins -Directory -ErrorAction SilentlyContinue
           foreach ($dir in $pluginDirs) {
+            $dirName = $dir.Name
             $infoFile = Join-Path $dir.FullName "INFO.md"
-            $name_ru = $dir.Name
+            $name_ru = $dirName
             $emoji = "🎛️"
             $desc = ""
 
             if (Test-Path $infoFile) {
               $content = Get-Content $infoFile -Raw
-              if ($content -match '(?m)^name_ru:\s*(.+)$')  { $name_ru = $matches[1].Trim() }
-              if ($content -match '(?m)^emoji:\s*(.+)$')    { $emoji = $matches[1].Trim() }
+              if ($content -match '(?m)^name_ru:\s*(.+)$')     { $name_ru = $matches[1].Trim() }
+              if ($content -match '(?m)^emoji:\s*(.+)$')       { $emoji = $matches[1].Trim() }
               if ($content -match '(?m)^description:\s*(.+)$') { $desc = $matches[1].Trim() }
             }
-            $line = "$emoji **$name_ru** (`$($dir.Name).vst3.zip`)"
+            $line = "$emoji **$name_ru** — файл $dirName.vst3.zip"
             if ($desc) { $line += " — $desc" }
             $body += $line
           }
@@ -87,7 +88,7 @@ jobs:
           $body += ""
           $body += "---"
           $body += ""
-          $body += "**Установка**: распакуй `.zip` файл, положи папку `.vst3` в `C:\Program Files\Common Files\VST3\` и перезапусти Cubase."
+          $body += "**Установка**: скачай нужный .zip ниже, распакуй его и положи папку .vst3 в C:\Program Files\Common Files\VST3\, перезапусти Cubase."
 
           $bodyText = $body -join "`n"
           $bodyText | Out-File -FilePath release_body.md -Encoding utf8
