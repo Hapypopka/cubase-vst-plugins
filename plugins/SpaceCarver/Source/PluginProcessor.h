@@ -41,6 +41,7 @@ private:
     static constexpr int fftOrder = 11;
     static constexpr int fftSize = 1 << fftOrder;
     static constexpr int hopSize = fftSize / 4;
+    static constexpr float silenceThreshold = 1e-6f;
 
     juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
 
@@ -51,17 +52,25 @@ private:
         SpectralMask mask;
         OverlapAdd ola;
         OverlapAdd deltaOla;
-        std::vector<float> inputFifo;
-        std::vector<float> sideFifo;
+
+        // Circular input buffers
+        std::vector<float> mainCircular;
+        std::vector<float> sideCircular;
+        int circularWritePos = 0;
+        int hopCounter = 0;
+
+        // Temp blocks for FFT
+        std::vector<float> fftMainInput;
+        std::vector<float> fftSideInput;
         std::vector<float> outputBlock;
         std::vector<float> deltaBlock;
-        int fifoIndex = 0;
     };
 
     std::array<ChannelFFTState, 2> channelState;
     double currentSampleRate = 44100.0;
 
     void processFFTBlock(ChannelFFTState& state, const SpectralMaskParams& params);
+    void copyCircularToLinear(const std::vector<float>& circular, int writePos, std::vector<float>& linear);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SpaceCarverAudioProcessor)
 };

@@ -73,11 +73,17 @@ void SpaceCarverAudioProcessor::prepareToPlay(double sampleRate, int /*samplesPe
         state.mask.prepare(fftSize * 2, sampleRate);
         state.ola.prepare(fftSize, hopSize);
         state.deltaOla.prepare(fftSize, hopSize);
-        state.inputFifo.resize(fftSize, 0.0f);
-        state.sideFifo.resize(fftSize, 0.0f);
+
+        state.mainCircular.resize(fftSize, 0.0f);
+        state.sideCircular.resize(fftSize, 0.0f);
+        state.fftMainInput.resize(fftSize, 0.0f);
+        state.fftSideInput.resize(fftSize, 0.0f);
         state.outputBlock.resize(fftSize, 0.0f);
         state.deltaBlock.resize(fftSize, 0.0f);
-        state.fifoIndex = 0;
+
+        state.circularWritePos = 0;
+        state.hopCounter = 0;
+
         state.mask.reset();
         state.ola.reset();
         state.deltaOla.reset();
@@ -104,14 +110,43 @@ bool SpaceCarverAudioProcessor::isBusesLayoutSupported(const BusesLayout& layout
     return true;
 }
 
+void SpaceCarverAudioProcessor::copyCircularToLinear(const std::vector<float>& circular, int writePos, std::vector<float>& linear)
+{
+    // Copy fftSize samples from circular buffer ending at writePos
+    const int bufSize = (int)circular.size();
+    for (int i = 0; i < fftSize; ++i)
+    {
+        int idx = (writePos - fftSize + i + bufSize) % bufSize;
+        linear[i] = circular[idx];
+    }
+}
+
 void SpaceCarverAudioProcessor::processFFTBlock(ChannelFFTState& state, const SpectralMaskParams& params)
 {
-    state.mainFFT.forward(state.inputFifo.data());
-    state.sideFFT.forward(state.sideFifo.data());
+    // Check if sidechain has actual signal
+    float sideEnergy = 0.0f;
+    for (int i = 0; i < fftSize; ++i)
+        sideEnergy += state.fftSideInput[i] * state.fftSideInput[i];
+    sideEnergy /= float(fftSize);
 
-    // Save dry FFT for delta
-    std::vector<float> dryFFT(fftSize * 2);
-    std::memcpy(dryFFT.data(), state.mainFFT.getData(), sizeof(float) * fftSize * 2);
+    if (sideEnergy < silenceThreshold)
+    {
+        // No sidechain signal: pass through unprocessed
+        // FFT forward + inverse with window gives us the windowed original
+        state.mainFFT.forward(state.fftMainInput.data());
+        state.mainFFT.inverse(state.outputBlock.data());
+        state.ola.applyWindow(state.outputBlock.data());
+        state.ola.addToOutput(state.outputBlock.data());
+
+        // Delta is zero (nothing removed)
+        std::fill(state.deltaBlock.begin(), state.deltaBlock.end(), 0.0f);
+        state.deltaOla.applyWindow(state.deltaBlock.data());
+        state.deltaOla.addToOutput(state.deltaBlock.data());
+        return;
+    }
+
+    state.mainFFT.forward(state.fftMainInput.data());
+    state.sideFFT.forward(state.fftSideInput.data());
 
     state.mask.process(state.mainFFT.getData(), fftSize * 2, state.sideFFT.getData(), params);
 
@@ -122,7 +157,7 @@ void SpaceCarverAudioProcessor::processFFTBlock(ChannelFFTState& state, const Sp
 
     // Delta: original windowed - processed
     FFTProcessor tempFFT(fftOrder);
-    tempFFT.forward(state.inputFifo.data());
+    tempFFT.forward(state.fftMainInput.data());
     tempFFT.inverse(state.deltaBlock.data());
 
     for (int i = 0; i < fftSize; ++i)
@@ -151,7 +186,7 @@ void SpaceCarverAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
     if (buffer.getNumChannels() < expectedTotalCh)
         return;
 
-    if (channelState[0].inputFifo.empty())
+    if (channelState[0].mainCircular.empty())
         return;
 
     auto sideBuffer = getBusBuffer(buffer, true, 1);
@@ -217,13 +252,19 @@ void SpaceCarverAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
         {
             const float drySample = mainData[i];
 
-            state.inputFifo[state.fifoIndex] = mainData[i];
-            state.sideFifo[state.fifoIndex] = sideData[i];
-            state.fifoIndex++;
+            // Write to circular buffers
+            state.mainCircular[state.circularWritePos] = mainData[i];
+            state.sideCircular[state.circularWritePos] = sideData[i];
+            state.circularWritePos = (state.circularWritePos + 1) % fftSize;
 
-            if (state.fifoIndex >= fftSize)
+            state.hopCounter++;
+
+            // Process FFT every hopSize samples
+            if (state.hopCounter >= hopSize)
             {
-                state.fifoIndex = 0;
+                state.hopCounter = 0;
+                copyCircularToLinear(state.mainCircular, state.circularWritePos, state.fftMainInput);
+                copyCircularToLinear(state.sideCircular, state.circularWritePos, state.fftSideInput);
                 processFFTBlock(state, maskParams);
             }
 
