@@ -26,6 +26,7 @@ public:
     }
 
     float* getData() { return buffer.data(); }
+    const float* getData() const { return buffer.data(); }
     int getSize() const { return size; }
 
 private:
