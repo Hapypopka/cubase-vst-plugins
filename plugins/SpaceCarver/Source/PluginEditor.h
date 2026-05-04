@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
+#include "SpectrumAnalyzer.h"
 
 class SpaceCarverAudioProcessorEditor : public juce::AudioProcessorEditor
 {
@@ -13,6 +14,8 @@ public:
 
 private:
     SpaceCarverAudioProcessor& processorRef;
+
+    SpectrumAnalyzer analyzer;
 
     juce::Slider claritySlider, focusSlider, attackSlider, releaseSlider, protectBodySlider, transientsSlider;
     juce::Label clarityLabel, focusLabel, attackLabel, releaseLabel, protectBodyLabel, transientsLabel;

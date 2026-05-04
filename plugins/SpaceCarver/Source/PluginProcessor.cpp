@@ -8,6 +8,9 @@ SpaceCarverAudioProcessor::SpaceCarverAudioProcessor()
         .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       parameters(*this, nullptr, "PARAMS", createLayout())
 {
+    smoothedMain.fill(-100.0f);
+    smoothedSide.fill(-100.0f);
+    smoothedReduction.fill(0.0f);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout SpaceCarverAudioProcessor::createLayout()
@@ -88,6 +91,10 @@ void SpaceCarverAudioProcessor::prepareToPlay(double sampleRate, int /*samplesPe
         state.ola.reset();
         state.deltaOla.reset();
     }
+
+    smoothedMain.fill(-100.0f);
+    smoothedSide.fill(-100.0f);
+    smoothedReduction.fill(0.0f);
 }
 
 bool SpaceCarverAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
@@ -112,7 +119,6 @@ bool SpaceCarverAudioProcessor::isBusesLayoutSupported(const BusesLayout& layout
 
 void SpaceCarverAudioProcessor::copyCircularToLinear(const std::vector<float>& circular, int writePos, std::vector<float>& linear)
 {
-    // Copy fftSize samples from circular buffer ending at writePos
     const int bufSize = (int)circular.size();
     for (int i = 0; i < fftSize; ++i)
     {
@@ -121,9 +127,40 @@ void SpaceCarverAudioProcessor::copyCircularToLinear(const std::vector<float>& c
     }
 }
 
+void SpaceCarverAudioProcessor::updateSpectrumDisplay(const ChannelFFTState& state)
+{
+    const float* mainFFTData = state.mainFFT.getData();
+    const float* sideFFTData = state.sideFFT.getData();
+    const auto& reduction = state.mask.getGainReduction();
+
+    const float smoothing = 0.8f;
+    const float minDb = -100.0f;
+
+    for (int bin = 0; bin < numDisplayBins && bin < fftSize; ++bin)
+    {
+        int i = bin * 2;
+
+        float mainMag = std::sqrt(mainFFTData[i] * mainFFTData[i] + mainFFTData[i + 1] * mainFFTData[i + 1]);
+        float mainDb = mainMag > 1e-10f ? 20.0f * std::log10(mainMag / float(fftSize)) : minDb;
+
+        float sideMag = std::sqrt(sideFFTData[i] * sideFFTData[i] + sideFFTData[i + 1] * sideFFTData[i + 1]);
+        float sideDb = sideMag > 1e-10f ? 20.0f * std::log10(sideMag / float(fftSize)) : minDb;
+
+        float redDb = (bin < (int)reduction.size() / 2) ? reduction[i] * 48.0f : 0.0f;
+
+        smoothedMain[bin] = smoothedMain[bin] * smoothing + mainDb * (1.0f - smoothing);
+        smoothedSide[bin] = smoothedSide[bin] * smoothing + sideDb * (1.0f - smoothing);
+        smoothedReduction[bin] = smoothedReduction[bin] * smoothing + redDb * (1.0f - smoothing);
+    }
+
+    const juce::SpinLock::ScopedLockType lock(spectrumLock);
+    spectrumForDisplay.mainSpectrum = smoothedMain;
+    spectrumForDisplay.sideSpectrum = smoothedSide;
+    spectrumForDisplay.reductionDb = smoothedReduction;
+}
+
 void SpaceCarverAudioProcessor::processFFTBlock(ChannelFFTState& state, const SpectralMaskParams& params)
 {
-    // Check if sidechain has actual signal
     float sideEnergy = 0.0f;
     for (int i = 0; i < fftSize; ++i)
         sideEnergy += state.fftSideInput[i] * state.fftSideInput[i];
@@ -131,14 +168,16 @@ void SpaceCarverAudioProcessor::processFFTBlock(ChannelFFTState& state, const Sp
 
     if (sideEnergy < silenceThreshold)
     {
-        // No sidechain signal: pass through unprocessed
-        // FFT forward + inverse with window gives us the windowed original
         state.mainFFT.forward(state.fftMainInput.data());
+        state.sideFFT.forward(state.fftSideInput.data());
+
+        // Update display even when silent
+        updateSpectrumDisplay(state);
+
         state.mainFFT.inverse(state.outputBlock.data());
         state.ola.applyWindow(state.outputBlock.data());
         state.ola.addToOutput(state.outputBlock.data());
 
-        // Delta is zero (nothing removed)
         std::fill(state.deltaBlock.begin(), state.deltaBlock.end(), 0.0f);
         state.deltaOla.applyWindow(state.deltaBlock.data());
         state.deltaOla.addToOutput(state.deltaBlock.data());
@@ -150,12 +189,14 @@ void SpaceCarverAudioProcessor::processFFTBlock(ChannelFFTState& state, const Sp
 
     state.mask.process(state.mainFFT.getData(), fftSize * 2, state.sideFFT.getData(), params);
 
-    // Wet output
+    // Update display after processing (mainFFT now has processed data, but we need pre-process for display)
+    // We use sideFFT (unchanged) and the gain reduction from mask
+    updateSpectrumDisplay(state);
+
     state.mainFFT.inverse(state.outputBlock.data());
     state.ola.applyWindow(state.outputBlock.data());
     state.ola.addToOutput(state.outputBlock.data());
 
-    // Delta: original windowed - processed
     FFTProcessor tempFFT(fftOrder);
     tempFFT.forward(state.fftMainInput.data());
     tempFFT.inverse(state.deltaBlock.data());
@@ -252,14 +293,12 @@ void SpaceCarverAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
         {
             const float drySample = mainData[i];
 
-            // Write to circular buffers
             state.mainCircular[state.circularWritePos] = mainData[i];
             state.sideCircular[state.circularWritePos] = sideData[i];
             state.circularWritePos = (state.circularWritePos + 1) % fftSize;
 
             state.hopCounter++;
 
-            // Process FFT every hopSize samples
             if (state.hopCounter >= hopSize)
             {
                 state.hopCounter = 0;

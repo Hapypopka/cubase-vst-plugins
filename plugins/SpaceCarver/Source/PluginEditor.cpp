@@ -9,8 +9,10 @@ static const juce::Colour activeButtonColour(0xff4a6cf7);
 static const juce::Colour inactiveButtonColour(0xff333350);
 
 SpaceCarverAudioProcessorEditor::SpaceCarverAudioProcessorEditor(SpaceCarverAudioProcessor& p)
-    : juce::AudioProcessorEditor(&p), processorRef(p)
+    : juce::AudioProcessorEditor(&p), processorRef(p), analyzer(p)
 {
+    addAndMakeVisible(analyzer);
+
     auto setupKnob = [this](juce::Slider& slider, juce::Label& label, const juce::String& text,
                              const juce::String& paramId, auto& attachment)
     {
@@ -64,7 +66,7 @@ SpaceCarverAudioProcessorEditor::SpaceCarverAudioProcessorEditor(SpaceCarverAudi
     deltaAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
         processorRef.parameters, "delta", deltaBtn);
 
-    setSize(680, 400);
+    setSize(750, 620);
 }
 
 void SpaceCarverAudioProcessorEditor::setMode(int mode)
@@ -87,7 +89,7 @@ void SpaceCarverAudioProcessorEditor::paint(juce::Graphics& g)
     g.fillAll(bgColour);
 
     // Title bar
-    auto titleArea = getLocalBounds().removeFromTop(44);
+    auto titleArea = getLocalBounds().removeFromTop(40);
     g.setColour(juce::Colour(0xff12122a));
     g.fillRect(titleArea);
     g.setColour(juce::Colours::white);
@@ -99,8 +101,9 @@ void SpaceCarverAudioProcessorEditor::paint(juce::Graphics& g)
 
     // Processing panel
     auto bounds = getLocalBounds();
-    bounds.removeFromTop(44);
-    auto processingArea = bounds.removeFromTop(220).reduced(12, 8);
+    bounds.removeFromTop(40);
+    bounds.removeFromTop(240); // analyzer space
+    auto processingArea = bounds.removeFromTop(200).reduced(10, 6);
     g.setColour(panelColour);
     g.fillRoundedRectangle(processingArea.toFloat(), 6.0f);
 
@@ -116,7 +119,7 @@ void SpaceCarverAudioProcessorEditor::paint(juce::Graphics& g)
     g.drawText("MODE", modePanelArea.getX() + 8, modePanelArea.getY() + 6, 60, 16, juce::Justification::centredLeft);
 
     // Bottom panel
-    auto bottomArea = bounds.reduced(12, 4);
+    auto bottomArea = bounds.reduced(10, 4);
     g.setColour(panelColour);
     g.fillRoundedRectangle(bottomArea.toFloat(), 6.0f);
 
@@ -129,9 +132,14 @@ void SpaceCarverAudioProcessorEditor::paint(juce::Graphics& g)
 void SpaceCarverAudioProcessorEditor::resized()
 {
     auto bounds = getLocalBounds();
-    bounds.removeFromTop(44);
+    bounds.removeFromTop(40); // title
 
-    auto processingArea = bounds.removeFromTop(220).reduced(12, 8);
+    // Spectrum analyzer
+    auto analyzerArea = bounds.removeFromTop(240).reduced(10, 6);
+    analyzer.setBounds(analyzerArea);
+
+    // Processing section
+    auto processingArea = bounds.removeFromTop(200).reduced(10, 6);
     auto modeArea = processingArea.removeFromRight(130).reduced(8, 28);
 
     auto knobArea = processingArea.reduced(8, 28);
@@ -151,6 +159,7 @@ void SpaceCarverAudioProcessorEditor::resized()
     placeKnob(protectBodySlider, protectBodyLabel);
     placeKnob(transientsSlider, transientsLabel);
 
+    // Mode buttons
     const int btnHeight = 36;
     const int btnGap = 6;
     vocalCleanBtn.setBounds(modeArea.removeFromTop(btnHeight));
@@ -159,7 +168,8 @@ void SpaceCarverAudioProcessorEditor::resized()
     modeArea.removeFromTop(btnGap);
     punchBtn.setBounds(modeArea.removeFromTop(btnHeight));
 
-    auto bottomArea = bounds.reduced(12, 4).reduced(8, 8);
+    // Bottom section
+    auto bottomArea = bounds.reduced(10, 4).reduced(8, 8);
 
     auto mixArea = bottomArea.removeFromLeft(90);
     mixLabel.setBounds(mixArea.removeFromBottom(20));
