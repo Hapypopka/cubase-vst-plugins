@@ -38,8 +38,8 @@ public:
 private:
     SpaceCarverAudioProcessor& processor;
 
-    static constexpr float minDb = -48.0f;
-    static constexpr float maxDb = 12.0f;
+    static constexpr float minDb = -30.0f;
+    static constexpr float maxDb = 30.0f;
     static constexpr float minFreq = 20.0f;
     static constexpr float maxFreq = 20000.0f;
 
@@ -188,9 +188,19 @@ private:
         for (float db = minDb; db <= maxDb; db += 6.0f)
         {
             float y = plotArea.getY() + dbToY(db, plotArea.getHeight());
-            g.drawHorizontalLine((int)y, plotArea.getX(), plotArea.getRight());
 
-            if ((int)db % 12 == 0)
+            // 0 dB line is brighter
+            if (std::abs(db) < 0.1f)
+            {
+                g.setColour(juce::Colour(0xff444466));
+                g.drawHorizontalLine((int)y, plotArea.getX(), plotArea.getRight());
+            }
+            else
+            {
+                g.drawHorizontalLine((int)y, plotArea.getX(), plotArea.getRight());
+            }
+
+            if ((int)db % 12 == 0 || std::abs(db) < 0.1f)
             {
                 g.setColour(juce::Colour(0xff555577));
                 g.drawText(juce::String((int)db), (int)plotArea.getX() - 38, (int)y - 5, 34, 10,

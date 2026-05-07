@@ -176,8 +176,9 @@ void SpaceCarverAudioProcessor::updateSpectrumDisplay(const ChannelFFTState& sta
     {
         int i = bin * 2;
 
-        // Normalize by fftSize/2 for single-sided spectrum (correct amplitude)
-        const float normFactor = 2.0f / float(fftSize);
+        // Normalize: 2/N for single-sided, plus ~18dB boost so music signal sits near 0dB
+        // (individual FFT bins for broadband music are much lower than peak amplitude)
+        const float normFactor = 16.0f / float(fftSize);
 
         float mainMag = std::sqrt(mainFFTData[i] * mainFFTData[i] + mainFFTData[i + 1] * mainFFTData[i + 1]) * normFactor;
         float mainDb = mainMag > 1e-10f ? 20.0f * std::log10(mainMag) : minDb;
