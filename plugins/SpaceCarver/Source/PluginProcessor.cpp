@@ -184,10 +184,13 @@ void SpaceCarverAudioProcessor::updateSpectrumDisplay(const ChannelFFTState& sta
             : 0.0f;
         sideRelDb = juce::jlimit(0.0f, 24.0f, sideRelDb);
 
-        // Reduction as negative dB (how much is being cut)
-        float redDb = (bin < (int)reduction.size() / 2)
-            ? -(reduction[i] * 24.0f)
-            : 0.0f;
+        // Reduction as actual dB: gain = 1 - envelope, dB = 20*log10(gain)
+        float redDb = 0.0f;
+        if (bin < (int)reduction.size() / 2)
+        {
+            float gain = 1.0f - reduction[i];
+            redDb = (gain > 1e-6f) ? 20.0f * std::log10(gain) : -24.0f;
+        }
 
         smoothedMain[bin] = 0.0f; // main = 0 baseline (not used as curve anymore)
         smoothedSide[bin] = smoothedSide[bin] * smoothing + sideRelDb * (1.0f - smoothing);
