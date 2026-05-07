@@ -79,6 +79,7 @@ private:
 
     std::array<ChannelFFTState, 2> channelState;
     double currentSampleRate = 44100.0;
+    float olaCompensation = 1.0f;
 
     // Smoothed display spectrum
     std::array<float, numDisplayBins> smoothedMain{};

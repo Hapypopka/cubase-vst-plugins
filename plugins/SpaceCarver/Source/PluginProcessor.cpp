@@ -92,6 +92,42 @@ void SpaceCarverAudioProcessor::prepareToPlay(double sampleRate, int /*samplesPe
         state.deltaOla.reset();
     }
 
+    // Compute exact OLA gain compensation by measuring actual FFT round-trip + window gain
+    {
+        FFTProcessor testFFT(fftOrder);
+        OverlapAdd testOla;
+        testOla.prepare(fftSize, hopSize);
+
+        std::vector<float> testInput(fftSize, 0.5f);
+        std::vector<float> testOutput(fftSize, 0.0f);
+
+        // Run enough hops to reach steady state
+        for (int hop = 0; hop < 8; ++hop)
+        {
+            testFFT.forward(testInput.data());
+            testFFT.inverse(testOutput.data());
+            testOla.applyWindow(testOutput.data());
+            testOla.addToOutput(testOutput.data());
+            for (int s = 0; s < hopSize; ++s)
+                testOla.getNextSample();
+        }
+
+        // Measure steady-state output level
+        float sum = 0.0f;
+        for (int hop = 0; hop < 2; ++hop)
+        {
+            testFFT.forward(testInput.data());
+            testFFT.inverse(testOutput.data());
+            testOla.applyWindow(testOutput.data());
+            testOla.addToOutput(testOutput.data());
+            for (int s = 0; s < hopSize; ++s)
+                sum += testOla.getNextSample();
+        }
+
+        float avgOutput = sum / float(hopSize * 2);
+        olaCompensation = (avgOutput > 1e-6f) ? (0.5f / avgOutput) : 1.0f;
+    }
+
     smoothedMain.fill(-100.0f);
     smoothedSide.fill(-100.0f);
     smoothedReduction.fill(0.0f);
@@ -309,10 +345,8 @@ void SpaceCarverAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
                 processFFTBlock(state, maskParams);
             }
 
-            // Normalization: Hann window squared with 75% overlap sums to 1.5
-            static constexpr float olaGainCompensation = 2.0f / 3.0f;
-            float wetSample = state.ola.getNextSample() * olaGainCompensation;
-            float deltaSample = state.deltaOla.getNextSample() * olaGainCompensation;
+            float wetSample = state.ola.getNextSample() * olaCompensation;
+            float deltaSample = state.deltaOla.getNextSample() * olaCompensation;
 
             if (delta)
             {
