@@ -14,14 +14,11 @@ public:
     {
         auto bounds = getLocalBounds().toFloat();
 
-        // Background
         g.setColour(juce::Colour(0xff0d0d1a));
         g.fillRoundedRectangle(bounds, 4.0f);
 
-        // Grid
         drawGrid(g, bounds);
 
-        // Get spectrum data
         SpaceCarverAudioProcessor::SpectrumData data;
         {
             const juce::SpinLock::ScopedLockType lock(processor.spectrumLock);
@@ -30,16 +27,9 @@ public:
 
         auto plotArea = bounds.reduced(40, 12);
 
-        // Draw reduction fill (red, semi-transparent)
         drawReductionFill(g, plotArea, data.reductionDb, data.mainSpectrum);
-
-        // Draw sidechain curve (orange)
         drawCurve(g, plotArea, data.sideSpectrum, juce::Colour(0xffff8c00), 1.5f);
-
-        // Draw main curve (blue)
         drawCurve(g, plotArea, data.mainSpectrum, juce::Colour(0xff4a9fff), 2.0f);
-
-        // Legend
         drawLegend(g, bounds);
     }
 
@@ -63,19 +53,112 @@ private:
         return height * (1.0f - (db - minDb) / (maxDb - minDb));
     }
 
-    int freqToBin(float freq) const
+    // Get interpolated dB value at fractional bin position
+    float getInterpolatedDb(const std::array<float, SpaceCarverAudioProcessor::numDisplayBins>& spectrum, float freq) const
     {
         float sr = (float)processor.getAnalysisSampleRate();
         int fftSz = processor.getFFTSize();
-        return juce::jlimit(0, SpaceCarverAudioProcessor::numDisplayBins - 1,
-                           (int)(freq * float(fftSz) / sr));
+        float binFloat = freq * float(fftSz) / sr;
+        int bin0 = (int)binFloat;
+        float frac = binFloat - float(bin0);
+
+        const int maxBin = SpaceCarverAudioProcessor::numDisplayBins - 1;
+        bin0 = juce::jlimit(0, maxBin, bin0);
+        int bin1 = juce::jmin(bin0 + 1, maxBin);
+
+        return spectrum[bin0] + frac * (spectrum[bin1] - spectrum[bin0]);
     }
 
-    float binToFreq(int bin) const
+    // Build a smooth path using fewer control points and cubic interpolation
+    juce::Path buildSmoothPath(juce::Rectangle<float> plotArea,
+                                const std::array<float, SpaceCarverAudioProcessor::numDisplayBins>& spectrum) const
     {
-        float sr = (float)processor.getAnalysisSampleRate();
-        int fftSz = processor.getFFTSize();
-        return float(bin) * sr / float(fftSz);
+        // Sample ~200 points on log scale, then use quadratic curves
+        const int numPoints = 200;
+        std::vector<juce::Point<float>> points;
+        points.reserve(numPoints);
+
+        for (int i = 0; i < numPoints; ++i)
+        {
+            float t = float(i) / float(numPoints - 1);
+            float freq = minFreq * std::pow(maxFreq / minFreq, t);
+            float db = getInterpolatedDb(spectrum, freq);
+            db = juce::jlimit(minDb, maxDb, db);
+
+            float x = plotArea.getX() + freqToX(freq, plotArea.getWidth());
+            float y = plotArea.getY() + dbToY(db, plotArea.getHeight());
+            points.push_back({x, y});
+        }
+
+        if (points.empty())
+            return {};
+
+        juce::Path path;
+        path.startNewSubPath(points[0]);
+
+        // Use quadratic bezier curves through midpoints for smoothness
+        for (size_t i = 1; i < points.size() - 1; ++i)
+        {
+            float midX = (points[i].x + points[i + 1].x) * 0.5f;
+            float midY = (points[i].y + points[i + 1].y) * 0.5f;
+            path.quadraticTo(points[i].x, points[i].y, midX, midY);
+        }
+
+        if (points.size() >= 2)
+            path.lineTo(points.back());
+
+        return path;
+    }
+
+    void drawCurve(juce::Graphics& g, juce::Rectangle<float> plotArea,
+                   const std::array<float, SpaceCarverAudioProcessor::numDisplayBins>& spectrum,
+                   juce::Colour colour, float thickness)
+    {
+        auto path = buildSmoothPath(plotArea, spectrum);
+        g.setColour(colour);
+        g.strokePath(path, juce::PathStrokeType(thickness, juce::PathStrokeType::curved));
+    }
+
+    void drawReductionFill(juce::Graphics& g, juce::Rectangle<float> plotArea,
+                           const std::array<float, SpaceCarverAudioProcessor::numDisplayBins>& reduction,
+                           const std::array<float, SpaceCarverAudioProcessor::numDisplayBins>& mainSpec)
+    {
+        const int numPoints = 200;
+        juce::Path fillPath;
+        std::vector<juce::Point<float>> bottomPoints;
+        bool started = false;
+
+        for (int i = 0; i < numPoints; ++i)
+        {
+            float t = float(i) / float(numPoints - 1);
+            float freq = minFreq * std::pow(maxFreq / minFreq, t);
+
+            float mainDb = juce::jlimit(minDb, maxDb, getInterpolatedDb(mainSpec, freq));
+            float redDb = getInterpolatedDb(reduction, freq);
+
+            float x = plotArea.getX() + freqToX(freq, plotArea.getWidth());
+            float yTop = plotArea.getY() + dbToY(mainDb, plotArea.getHeight());
+            float yBottom = plotArea.getY() + dbToY(mainDb - redDb, plotArea.getHeight());
+
+            if (!started)
+            {
+                fillPath.startNewSubPath(x, yTop);
+                started = true;
+            }
+            else
+            {
+                fillPath.lineTo(x, yTop);
+            }
+            bottomPoints.push_back({x, yBottom});
+        }
+
+        // Close by going backwards along bottom
+        for (int i = (int)bottomPoints.size() - 1; i >= 0; --i)
+            fillPath.lineTo(bottomPoints[i]);
+
+        fillPath.closeSubPath();
+        g.setColour(juce::Colour(0x40ff3333));
+        g.fillPath(fillPath);
     }
 
     void drawGrid(juce::Graphics& g, juce::Rectangle<float> bounds)
@@ -84,7 +167,6 @@ private:
 
         g.setColour(juce::Colour(0xff222240));
 
-        // Frequency lines
         const float freqs[] = { 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000 };
         g.setFont(juce::Font(9.0f));
 
@@ -96,14 +178,13 @@ private:
             g.setColour(juce::Colour(0xff555577));
             juce::String label;
             if (f >= 1000)
-                label = juce::String(f / 1000.0f, (f >= 10000) ? 0 : 0) + "k";
+                label = juce::String((int)(f / 1000.0f)) + "k";
             else
                 label = juce::String((int)f);
             g.drawText(label, (int)x - 15, (int)plotArea.getBottom() + 1, 30, 10, juce::Justification::centred);
             g.setColour(juce::Colour(0xff222240));
         }
 
-        // dB lines
         for (float db = minDb; db <= maxDb; db += 6.0f)
         {
             float y = plotArea.getY() + dbToY(db, plotArea.getHeight());
@@ -117,95 +198,6 @@ private:
                 g.setColour(juce::Colour(0xff222240));
             }
         }
-    }
-
-    void drawCurve(juce::Graphics& g, juce::Rectangle<float> plotArea,
-                   const std::array<float, SpaceCarverAudioProcessor::numDisplayBins>& spectrum,
-                   juce::Colour colour, float thickness)
-    {
-        juce::Path path;
-        bool started = false;
-
-        for (int px = 0; px < (int)plotArea.getWidth(); ++px)
-        {
-            float freq = minFreq * std::pow(maxFreq / minFreq, float(px) / plotArea.getWidth());
-            int bin = freqToBin(freq);
-            if (bin < 1 || bin >= SpaceCarverAudioProcessor::numDisplayBins)
-                continue;
-
-            float db = spectrum[bin];
-            db = juce::jlimit(minDb, maxDb, db);
-            float y = plotArea.getY() + dbToY(db, plotArea.getHeight());
-            float x = plotArea.getX() + float(px);
-
-            if (!started)
-            {
-                path.startNewSubPath(x, y);
-                started = true;
-            }
-            else
-            {
-                path.lineTo(x, y);
-            }
-        }
-
-        g.setColour(colour);
-        g.strokePath(path, juce::PathStrokeType(thickness));
-    }
-
-    void drawReductionFill(juce::Graphics& g, juce::Rectangle<float> plotArea,
-                           const std::array<float, SpaceCarverAudioProcessor::numDisplayBins>& reduction,
-                           const std::array<float, SpaceCarverAudioProcessor::numDisplayBins>& mainSpec)
-    {
-        juce::Path fillPath;
-        juce::Path topPath;
-        bool started = false;
-
-        for (int px = 0; px < (int)plotArea.getWidth(); ++px)
-        {
-            float freq = minFreq * std::pow(maxFreq / minFreq, float(px) / plotArea.getWidth());
-            int bin = freqToBin(freq);
-            if (bin < 1 || bin >= SpaceCarverAudioProcessor::numDisplayBins)
-                continue;
-
-            float mainDb = juce::jlimit(minDb, maxDb, mainSpec[bin]);
-            float redDb = reduction[bin];
-
-            float yTop = plotArea.getY() + dbToY(mainDb, plotArea.getHeight());
-            float yBottom = plotArea.getY() + dbToY(mainDb - redDb, plotArea.getHeight());
-            float x = plotArea.getX() + float(px);
-
-            if (!started)
-            {
-                fillPath.startNewSubPath(x, yTop);
-                topPath.startNewSubPath(x, yBottom);
-                started = true;
-            }
-            else
-            {
-                fillPath.lineTo(x, yTop);
-                topPath.lineTo(x, yBottom);
-            }
-        }
-
-        // Close fill path by going backwards along the bottom
-        for (int px = (int)plotArea.getWidth() - 1; px >= 0; --px)
-        {
-            float freq = minFreq * std::pow(maxFreq / minFreq, float(px) / plotArea.getWidth());
-            int bin = freqToBin(freq);
-            if (bin < 1 || bin >= SpaceCarverAudioProcessor::numDisplayBins)
-                continue;
-
-            float mainDb = juce::jlimit(minDb, maxDb, mainSpec[bin]);
-            float redDb = reduction[bin];
-            float yBottom = plotArea.getY() + dbToY(mainDb - redDb, plotArea.getHeight());
-            float x = plotArea.getX() + float(px);
-            fillPath.lineTo(x, yBottom);
-        }
-
-        fillPath.closeSubPath();
-        g.setColour(juce::Colour(0x40ff3333));
-        g.fillPath(fillPath);
     }
 
     void drawLegend(juce::Graphics& g, juce::Rectangle<float> bounds)
