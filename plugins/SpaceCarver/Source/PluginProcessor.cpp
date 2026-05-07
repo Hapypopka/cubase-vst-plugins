@@ -322,8 +322,9 @@ void SpaceCarverAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
     maskParams.focus = juce::jlimit(0.0f, 1.0f, focus + modeFocusBias);
     maskParams.protectBody = juce::jlimit(0.0f, 1.0f, protectBody + modeBodyBias);
     maskParams.transients = juce::jlimit(0.0f, 1.0f, transients + modeTransBias);
-    maskParams.attackCoeff = 1.0f - std::exp(-1.0f / (float(currentSampleRate) * attackMs * 0.001f));
-    maskParams.releaseCoeff = 1.0f - std::exp(-1.0f / (float(currentSampleRate) * releaseMs * 0.001f));
+    // Scale by hopSize since coefficients are applied per-hop, not per-sample
+    maskParams.attackCoeff = 1.0f - std::exp(-float(hopSize) / (float(currentSampleRate) * attackMs * 0.001f));
+    maskParams.releaseCoeff = 1.0f - std::exp(-float(hopSize) / (float(currentSampleRate) * releaseMs * 0.001f));
 
     for (int ch = 0; ch < numOutputChannels; ++ch)
     {
