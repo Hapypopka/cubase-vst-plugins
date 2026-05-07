@@ -8,8 +8,8 @@ SpaceCarverAudioProcessor::SpaceCarverAudioProcessor()
         .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       parameters(*this, nullptr, "PARAMS", createLayout())
 {
-    smoothedMain.fill(-100.0f);
-    smoothedSide.fill(-100.0f);
+    smoothedMain.fill(0.0f);
+    smoothedSide.fill(0.0f);
     smoothedReduction.fill(0.0f);
 }
 
@@ -128,8 +128,8 @@ void SpaceCarverAudioProcessor::prepareToPlay(double sampleRate, int /*samplesPe
         olaCompensation = (avgOutput > 1e-6f) ? (0.5f / avgOutput) : 1.0f;
     }
 
-    smoothedMain.fill(-100.0f);
-    smoothedSide.fill(-100.0f);
+    smoothedMain.fill(0.0f);
+    smoothedSide.fill(0.0f);
     smoothedReduction.fill(0.0f);
 }
 
@@ -170,26 +170,27 @@ void SpaceCarverAudioProcessor::updateSpectrumDisplay(const ChannelFFTState& sta
     const auto& reduction = state.mask.getGainReduction();
 
     const float smoothing = 0.8f;
-    const float minDb = -100.0f;
 
     for (int bin = 0; bin < numDisplayBins && bin < fftSize; ++bin)
     {
         int i = bin * 2;
 
-        // Normalize: 2/N for single-sided, plus ~18dB boost so music signal sits near 0dB
-        // (individual FFT bins for broadband music are much lower than peak amplitude)
-        const float normFactor = 16.0f / float(fftSize);
+        float mainMag = std::sqrt(mainFFTData[i] * mainFFTData[i] + mainFFTData[i + 1] * mainFFTData[i + 1]);
+        float sideMag = std::sqrt(sideFFTData[i] * sideFFTData[i] + sideFFTData[i + 1] * sideFFTData[i + 1]);
 
-        float mainMag = std::sqrt(mainFFTData[i] * mainFFTData[i] + mainFFTData[i + 1] * mainFFTData[i + 1]) * normFactor;
-        float mainDb = mainMag > 1e-10f ? 20.0f * std::log10(mainMag) : minDb;
+        // Sidechain relative to main (positive = sidechain louder = more reduction expected)
+        float sideRelDb = (mainMag > 1e-10f && sideMag > 1e-10f)
+            ? 20.0f * std::log10(sideMag / mainMag)
+            : 0.0f;
+        sideRelDb = juce::jlimit(0.0f, 24.0f, sideRelDb);
 
-        float sideMag = std::sqrt(sideFFTData[i] * sideFFTData[i] + sideFFTData[i + 1] * sideFFTData[i + 1]) * normFactor;
-        float sideDb = sideMag > 1e-10f ? 20.0f * std::log10(sideMag) : minDb;
+        // Reduction as negative dB (how much is being cut)
+        float redDb = (bin < (int)reduction.size() / 2)
+            ? -(reduction[i] * 24.0f)
+            : 0.0f;
 
-        float redDb = (bin < (int)reduction.size() / 2) ? reduction[i] * 48.0f : 0.0f;
-
-        smoothedMain[bin] = smoothedMain[bin] * smoothing + mainDb * (1.0f - smoothing);
-        smoothedSide[bin] = smoothedSide[bin] * smoothing + sideDb * (1.0f - smoothing);
+        smoothedMain[bin] = 0.0f; // main = 0 baseline (not used as curve anymore)
+        smoothedSide[bin] = smoothedSide[bin] * smoothing + sideRelDb * (1.0f - smoothing);
         smoothedReduction[bin] = smoothedReduction[bin] * smoothing + redDb * (1.0f - smoothing);
     }
 
