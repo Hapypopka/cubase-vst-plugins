@@ -140,11 +140,14 @@ void SpaceCarverAudioProcessor::updateSpectrumDisplay(const ChannelFFTState& sta
     {
         int i = bin * 2;
 
-        float mainMag = std::sqrt(mainFFTData[i] * mainFFTData[i] + mainFFTData[i + 1] * mainFFTData[i + 1]);
-        float mainDb = mainMag > 1e-10f ? 20.0f * std::log10(mainMag / float(fftSize)) : minDb;
+        // Normalize by fftSize/2 for single-sided spectrum (correct amplitude)
+        const float normFactor = 2.0f / float(fftSize);
 
-        float sideMag = std::sqrt(sideFFTData[i] * sideFFTData[i] + sideFFTData[i + 1] * sideFFTData[i + 1]);
-        float sideDb = sideMag > 1e-10f ? 20.0f * std::log10(sideMag / float(fftSize)) : minDb;
+        float mainMag = std::sqrt(mainFFTData[i] * mainFFTData[i] + mainFFTData[i + 1] * mainFFTData[i + 1]) * normFactor;
+        float mainDb = mainMag > 1e-10f ? 20.0f * std::log10(mainMag) : minDb;
+
+        float sideMag = std::sqrt(sideFFTData[i] * sideFFTData[i] + sideFFTData[i + 1] * sideFFTData[i + 1]) * normFactor;
+        float sideDb = sideMag > 1e-10f ? 20.0f * std::log10(sideMag) : minDb;
 
         float redDb = (bin < (int)reduction.size() / 2) ? reduction[i] * 48.0f : 0.0f;
 
@@ -187,11 +190,10 @@ void SpaceCarverAudioProcessor::processFFTBlock(ChannelFFTState& state, const Sp
     state.mainFFT.forward(state.fftMainInput.data());
     state.sideFFT.forward(state.fftSideInput.data());
 
-    state.mask.process(state.mainFFT.getData(), fftSize * 2, state.sideFFT.getData(), params);
-
-    // Update display after processing (mainFFT now has processed data, but we need pre-process for display)
-    // We use sideFFT (unchanged) and the gain reduction from mask
+    // Update display BEFORE mask processing so we show the original input spectrum
     updateSpectrumDisplay(state);
+
+    state.mask.process(state.mainFFT.getData(), fftSize * 2, state.sideFFT.getData(), params);
 
     state.mainFFT.inverse(state.outputBlock.data());
     state.ola.applyWindow(state.outputBlock.data());
