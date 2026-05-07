@@ -192,7 +192,7 @@ private:
 
         g.setColour(juce::Colour(0xffff8c00));
         g.fillRect(x, y + 2, 12, 4);
-        g.drawText("SIDECHAIN", x + 16, y, 80, 10, juce::Justification::centredLeft);
+        g.drawText("INPUT", x + 16, y, 80, 10, juce::Justification::centredLeft);
 
         g.setColour(juce::Colour(0xffff4444));
         g.fillRect(x + 100, y + 2, 12, 4);
