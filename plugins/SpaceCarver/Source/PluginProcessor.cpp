@@ -291,37 +291,42 @@ void SpaceCarverAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
 
     const float outputGain = juce::Decibels::decibelsToGain(outputDb);
 
-    float modeAmountMult = 1.0f;
-    float modeFocusBias = 0.0f;
-    float modeBodyBias = 0.0f;
-    float modeTransBias = 0.0f;
+    // Mode presets: each mode has its own character
+    float modeAmount = clarity;
+    float modeFocus = focus;
+    float modeBody = protectBody;
+    float modeTrans = transients;
 
     switch (mode)
     {
         case VocalClean:
-            modeAmountMult = 3.0f;
-            modeFocusBias = 0.1f;
-            modeBodyBias = 0.2f;
+            // Surgical mid-range focus, strong low-end protection
+            modeAmount = clarity * 4.0f;
+            modeFocus = juce::jlimit(0.0f, 1.0f, focus * 1.5f + 0.2f);
+            modeBody = juce::jlimit(0.0f, 1.0f, protectBody + 0.4f);
+            modeTrans = transients;
             break;
         case MixGlue:
-            modeAmountMult = 2.0f;
-            modeFocusBias = -0.2f;
-            modeBodyBias = 0.0f;
-            modeTransBias = -0.1f;
+            // Gentle, broad, even — glues the mix together
+            modeAmount = clarity * 2.0f;
+            modeFocus = juce::jlimit(0.0f, 1.0f, focus * 0.5f);
+            modeBody = protectBody * 0.5f;
+            modeTrans = transients * 0.5f;
             break;
         case Punch:
-            modeAmountMult = 3.5f;
-            modeFocusBias = 0.2f;
-            modeBodyBias = 0.1f;
-            modeTransBias = 0.3f;
+            // Aggressive carving but preserves all transients and low end
+            modeAmount = clarity * 6.0f;
+            modeFocus = juce::jlimit(0.0f, 1.0f, focus * 1.3f + 0.15f);
+            modeBody = juce::jlimit(0.0f, 1.0f, protectBody + 0.3f);
+            modeTrans = juce::jlimit(0.0f, 1.0f, transients + 0.5f);
             break;
     }
 
     SpectralMaskParams maskParams;
-    maskParams.amount = clarity * modeAmountMult;
-    maskParams.focus = juce::jlimit(0.0f, 1.0f, focus + modeFocusBias);
-    maskParams.protectBody = juce::jlimit(0.0f, 1.0f, protectBody + modeBodyBias);
-    maskParams.transients = juce::jlimit(0.0f, 1.0f, transients + modeTransBias);
+    maskParams.amount = modeAmount;
+    maskParams.focus = modeFocus;
+    maskParams.protectBody = modeBody;
+    maskParams.transients = modeTrans;
     // Scale by hopSize since coefficients are applied per-hop, not per-sample
     maskParams.attackCoeff = 1.0f - std::exp(-float(hopSize) / (float(currentSampleRate) * attackMs * 0.001f));
     maskParams.releaseCoeff = 1.0f - std::exp(-float(hopSize) / (float(currentSampleRate) * releaseMs * 0.001f));
