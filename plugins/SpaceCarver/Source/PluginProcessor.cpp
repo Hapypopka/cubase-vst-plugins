@@ -307,8 +307,10 @@ void SpaceCarverAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
                 processFFTBlock(state, maskParams);
             }
 
-            float wetSample = state.ola.getNextSample();
-            float deltaSample = state.deltaOla.getNextSample();
+            // Normalization: Hann window squared with 75% overlap sums to 1.5
+            static constexpr float olaGainCompensation = 2.0f / 3.0f;
+            float wetSample = state.ola.getNextSample() * olaGainCompensation;
+            float deltaSample = state.deltaOla.getNextSample() * olaGainCompensation;
 
             if (delta)
             {
